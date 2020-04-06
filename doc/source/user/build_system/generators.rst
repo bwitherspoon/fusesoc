@@ -160,7 +160,7 @@ When FuseSoC is launched and a core target using a generator is processed, the f
 5. If the generator has `cache_type` set to `input` fusesoc will check if a cached output already exists. In this case item 6 and 7 will be omitted. See section :ref:`Generator Cache <ug_generator_cache>` for more information.
 6. A yaml configuration file is created in the generator output directory. The parameters from the instance are passed on to this file. FuseSoC will set the files root of the calling core as `files_root` and add the calculated vlnv.
 7. FuseSoC will switch working directory to the generator output directory and call the generator, using the command found in the generator's `command` field and with the created yaml file as command-line argument.
-8. When the generator has successfully completed (or a cached run already exists), FuseSoC will scan the generator output directory for new .core files. These will be injected in the dependency tree right after the calling core and will be treated just like regular cores, except that any extra dependencies listed in the generated core will be ignored.
+8. When *all* generators have successfully completed, FuseSoC will scan the generator output directories of the generators for new core files, and insert them into the list of available cores. This updated list of cores is then resolved to include dependencies.
 9. If the generator is marked as set as cacheable (`input` or `generator`) the directory (along with content) created under item 4 will be kept, otherwise it will be deleted.
 
 .. _ug_generator_cache:

@@ -11,8 +11,8 @@ import shutil
 from filecmp import cmp
 
 from fusesoc import utils
-from fusesoc.capi2.coreparser import Core2Parser
 from fusesoc.coremanager import DependencyError
+from fusesoc.librarymanager import Library
 from fusesoc.utils import merge_dict
 from fusesoc.vlnv import Vlnv
 
@@ -61,14 +61,9 @@ class Edalizer:
 
         self.generators = {}
 
-        self._resolved_or_generated_cores = []
-
     @property
     def cores(self):
-        if self._resolved_or_generated_cores:
-            return self._resolved_or_generated_cores
-        else:
-            return self.resolved_cores
+        return self.resolved_cores
 
     @property
     def resolved_cores(self):
@@ -134,29 +129,53 @@ class Edalizer:
 
     def run_generators(self):
         """Run all generators"""
-        self._resolved_or_generated_cores = []
+        generated_libraries = []
         self._generated_core_dirs_to_remove = []
         for core in self.cores:
             logger.debug("Running generators in " + str(core.name))
             core_flags = self._core_flags(core)
-            self._resolved_or_generated_cores.append(core)
             for ttptttg_data in core.get_ttptttg(core_flags):
-                _ttptttg = Ttptttg(
+                ttptttg = Ttptttg(
                     ttptttg_data,
                     core,
                     self.generators,
                     self.work_root if not self.export_root else None,
                     resolve_env_vars=self.resolve_env_vars,
                 )
-                for gen_core in _ttptttg.generate():
-                    core.direct_deps.append(str(gen_core.name))
-                    gen_core.pos = _ttptttg.pos
-                    self._resolved_or_generated_cores.append(gen_core)
+
+                gen_lib = ttptttg.generate()
+
+                for gen_core in gen_lib:
                     if self.export_root and not (
-                        _ttptttg.is_generator_cacheable()
-                        or _ttptttg.is_input_cacheable()
+                        ttptttg.is_generator_cacheable()
+                        or ttptttg.is_input_cacheable()
                     ):
                         self._generated_core_dirs_to_remove.append(gen_core.core_root)
+
+                # The output directory of the generator can contain core
+                # files, which need to be added to the dependency tree.
+                # This isn't done instantly, but only after all generators
+                # have finished, to re-do the dependency resolution only
+                # once, and not once per generator run.
+                generated_libraries.append(gen_lib)
+
+                # Create a dependency to all generated cores.
+                # XXX: We need a cleaner API to the CoreManager to add
+                # these dependencies. Until then, explicitly use a private
+                # API to be reminded that this is a workaround.
+                gen_cores = self.core_manager.find_cores(gen_lib)
+                gen_core_vlnvs = [core.name for core in gen_cores]
+                logger.debug(
+                    "The generator produced the following cores, which "
+                    "are inserted into the dependency tree: %s",
+                    gen_cores,
+                )
+                core._generator_created_dependencies += gen_core_vlnvs
+
+        # Make all new libraries known to fusesoc. This invalidates the solver
+        # cache and is therefore quite expensive.
+        for lib in generated_libraries:
+            self.core_manager.add_library(lib)
 
     def export(self):
         for core in self.cores:
@@ -625,7 +644,7 @@ class Ttptttg:
         """Run a parametrized generator
 
         Returns:
-            list: Cores created by the generator
+            Libary: A Library with the generated files
         """
 
         hexdigest = self._sha256_input_yaml_hexdigest()
@@ -700,22 +719,5 @@ class Ttptttg:
             shutil.rmtree(generator_cwd, ignore_errors=True)
             self._run(generator_cwd)
 
-        cores = []
-        logger.debug("Looking for generated or cached cores in " + generator_cwd)
-        parser = Core2Parser(self.resolve_env_vars, allow_additional_properties=False)
-        for root, dirs, files in os.walk(generator_cwd):
-            for f in files:
-                if f.endswith(".core"):
-                    try:
-                        cores.append(
-                            Core(
-                                parser,
-                                os.path.join(root, f),
-                                generated=True,
-                            )
-                        )
-                    except SyntaxError as e:
-                        w = "Failed to parse generated core file " + f + ": " + e.msg
-                        raise RuntimeError(w)
-        logger.debug("Found " + ", ".join(str(c.name) for c in cores))
-        return cores
+        library_name = "generated-" + self.vlnv.sanitized_name
+        return Library(name=library_name, location=generator_cwd)
