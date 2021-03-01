@@ -191,6 +191,7 @@ class Edalizer:
                     self.work_root if not self.export_root else None,
                     resolve_env_vars=self.resolve_env_vars,
                     core_list=self._core_list_for_generator(),
+                    toplevel=str(self.toplevel),
                 )
 
                 gen_lib = ttptttg.generate()
@@ -576,7 +577,7 @@ from fusesoc.utils import Launcher
 
 
 class Ttptttg:
-    def __init__(self, ttptttg, core, generators, gen_root, resolve_env_vars=False, core_list=None):
+    def __init__(self, ttptttg, core, generators, gen_root, resolve_env_vars=False, core_list=None, toplevel=None):
         generator_name = ttptttg["generator"]
         if not generator_name in generators:
             raise RuntimeError(
@@ -609,6 +610,7 @@ class Ttptttg:
             "parameters": parameters,
             "vlnv": vlnv_str,
             "cores": core_list,
+            "toplevel": toplevel,
         }
 
     def _sha256_input_yaml_hexdigest(self):
