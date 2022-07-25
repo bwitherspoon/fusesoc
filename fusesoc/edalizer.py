@@ -179,6 +179,7 @@ class Edalizer:
     def run_generators(self):
         """Run all generators"""
         generated_libraries = []
+        generated_cores = []
         self._generated_core_dirs_to_remove = []
         for core in self.cores:
             logger.debug("Running generators in " + str(core.name))
@@ -223,11 +224,25 @@ class Edalizer:
                 )
                 core._generator_created_dependencies += gen_core_vlnvs
 
+                # Collect VLNVs of all generated cores. This information is
+                # required to set is_generated for all these cores after
+                # adding them to fusesoc. This is needed to later on
+                # relocate generator outputs and to delete the ttptttg
+                # temporary working directories afterwards.
+                generated_cores.extend([str(vlnv) for vlnv in gen_core_vlnvs])
+
         # Make all new libraries known to fusesoc. This invalidates the solver
         # cache and is therefore quite expensive.
         for lib in generated_libraries:
             self.core_manager.add_library(lib, ignored_dirs=[])
         self._invalidate_cached_core_list_for_generator()
+
+        # Set is_generated for all generated cores.
+        cores = self.core_manager.get_cores()
+        for core in cores:
+            if core in generated_cores:
+                logger.debug(f"Setting 'is_generated' for generated core {core}")
+                cores[core].is_generated = True
 
     def export(self):
         for core in self.cores:
@@ -280,6 +295,8 @@ class Edalizer:
             # Extract files
             if self.export_root:
                 files_root = os.path.join(self.export_root, core.name.sanitized_name)
+            elif core.is_generated:
+                files_root = os.path.join(self.work_root, "generated", core.name.sanitized_name)
             else:
                 files_root = core.files_root
 
