@@ -144,8 +144,9 @@ class Edalizer:
                 )
 
                 gen_lib = ttptttg.generate()
+                gen_cores = self.core_manager.find_cores(gen_lib, ignored_dirs=[])
 
-                for gen_core in gen_lib:
+                for gen_core in gen_cores:
                     if self.export_root and not (
                         ttptttg.is_generator_cacheable()
                         or ttptttg.is_input_cacheable()
@@ -163,7 +164,6 @@ class Edalizer:
                 # XXX: We need a cleaner API to the CoreManager to add
                 # these dependencies. Until then, explicitly use a private
                 # API to be reminded that this is a workaround.
-                gen_cores = self.core_manager.find_cores(gen_lib)
                 gen_core_vlnvs = [core.name for core in gen_cores]
                 logger.debug(
                     "The generator produced the following cores, which "
@@ -175,7 +175,7 @@ class Edalizer:
         # Make all new libraries known to fusesoc. This invalidates the solver
         # cache and is therefore quite expensive.
         for lib in generated_libraries:
-            self.core_manager.add_library(lib)
+            self.core_manager.add_library(lib, ignored_dirs=[])
 
     def export(self):
         for core in self.cores:
